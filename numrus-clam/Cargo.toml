@@ -1,0 +1,13 @@
+[package]
+name = "numrus-clam"
+version = "0.1.0"
+edition = "2021"
+description = "CLAM tree, triangle-inequality search, LOD pyramid, and panCAKES compression for numrus"
+
+[dependencies]
+numrus-core = { path = "../numrus-core", features = ["avx512"] }
+
+[features]
+default = []
+avx512 = ["numrus-core/avx512"]
+avx2 = ["numrus-core/avx2"]

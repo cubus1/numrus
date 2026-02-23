@@ -1,0 +1,24 @@
+[package]
+name = "numrus-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared SIMD primitives and zero-copy blackboard for numrus ecosystem"
+
+[features]
+default = ["avx512"]
+# AVX-512: f32x16, f64x8, u8x64 — servers/cloud (Sapphire Rapids, EPYC, etc.)
+# Default ON. Runtime dispatch falls back: VPOPCNTDQ → AVX2 Harley-Seal → scalar POPCNT.
+avx512 = []
+# AVX2: f32x8, f64x4, u8x32 — laptops/desktops (Haswell+)
+# For AVX2-only builds: default-features = false, features = ["avx2"]
+avx2 = []
+# Intel MKL: optional FFI dispatch for BLAS/LAPACK/VML/FFT.
+# When enabled, compile-time feature gate routes to MKL instead of hand-rolled SIMD.
+# Uses static linking, LP64 (32-bit ints), sequential (no OpenMP — Rayon handles threading).
+mkl = ["dep:intel-mkl-src"]
+
+[dependencies]
+intel-mkl-src = { version = "0.8", features = ["mkl-static-lp64-seq"], optional = true }
+smallvec = "1"
+
+[dev-dependencies]

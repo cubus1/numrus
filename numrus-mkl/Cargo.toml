@@ -1,0 +1,22 @@
+[package]
+name = "numrus-mkl"
+version = "0.1.0"
+edition = "2021"
+description = "Pure Rust MKL replacement — LAPACK, FFT, VML with AVX-512/AVX2 SIMD"
+
+[features]
+default = ["avx512"]
+avx512 = ["numrus-core/avx512", "numrus-blas/avx512"]
+avx2 = ["numrus-core/avx2", "numrus-blas/avx2"]
+mkl = ["numrus-core/mkl", "numrus-blas/mkl"]
+
+[dependencies]
+numrus-core = { path = "../numrus-core", features = ["avx512"] }
+numrus-blas = { path = "../numrus-blas", features = ["avx512"] }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "mkl_benchmarks"
+harness = false

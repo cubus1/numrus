@@ -1,0 +1,127 @@
+name: Build and Upload Wheels to PyPI
+
+on: [workflow_dispatch]
+
+jobs:
+  build_wheels:
+    name: py${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-13]
+        python-version: [38, 39, 310, 311, 312, 313]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Wheels
+        uses: pypa/cibuildwheel@v2.21.2
+        with:
+          output-dir: wheelhouse
+          package-dir: ./bindings/python
+          build-frontend: build
+        env:
+          CIBW_BUILD: "cp${{ matrix.python-version }}-*"
+          CIBW_SKIP: "*-manylinux_i686 *-musllinux_i686 *-win32"
+          CIBW_TEST_SKIP: "*-macosx_arm64"
+          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2014"
+          CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux2014"
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_BEFORE_BUILD_LINUX: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
+            chmod +x rustup-init.sh
+            ./rustup-init.sh -y
+            source $HOME/.cargo/env
+            rustup default nightly-2024-05-04
+            pip install setuptools setuptools_rust wheel
+          CIBW_ENVIRONMENT_LINUX: PATH="$PATH:$HOME/.cargo/bin"
+          CIBW_BEFORE_BUILD_MACOS: |
+            rustup default nightly-2024-05-04
+            rustup target add aarch64-apple-darwin
+            pip install setuptools setuptools_rust wheel
+          CIBW_ENVIRONMENT_MACOS: PATH="$PATH:$HOME/.cargo/bin"
+          CIBW_BEFORE_BUILD_WINDOWS: |
+            rustup default nightly-2024-05-04
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheelhouse-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: wheelhouse/*.whl
+
+  build_wheels_aarch64:
+    name: py${{ matrix.python-version }} on aarch64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [38, 39, 310, 311, 312, 313]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Wheels (ARM64)
+        uses: pypa/cibuildwheel@v2.21.2
+        with:
+          output-dir: wheelhouse
+          package-dir: ./bindings/python
+        env:
+          CIBW_BUILD: "cp${{ matrix.python-version }}-*"
+          CIBW_ARCHS: "aarch64"
+          CIBW_BEFORE_BUILD: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
+            chmod +x rustup-init.sh
+            ./rustup-init.sh -y
+            source $HOME/.cargo/env
+            rustup default nightly-2024-05-04
+            rustup target add aarch64-unknown-linux-gnu
+            pip install setuptools setuptools_rust wheel
+          CIBW_ENVIRONMENT_LINUX: 'PATH="$PATH:$HOME/.cargo/bin" CARGO_NET_GIT_FETCH_WITH_CLI=true CARGO_INCREMENTAL=1'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheelhouse-aarch64-py${{ matrix.python-version }}
+          path: wheelhouse/*.whl
+
+  build_sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        name: Install Python
+        with:
+          python-version: "3.9"
+      - name: Build sdist
+        run: |
+          pip install --upgrade build
+          python -m build --sdist
+        working-directory: bindings/python
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: bindings/python/dist/*.tar.gz
+
+  upload_to_pypi:
+    name: Upload to PyPI
+    needs: [build_wheels, build_wheels_aarch64, build_sdist]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Install twine
+        run: pip install twine
+      - uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+      - name: List files in the artifact directory
+        run: ls -R ./artifacts
+      - name: Upload Distribution to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          find ./artifacts -type f \( -name '*.whl' -o -name '*.tar.gz' \) -print0 | xargs -0 twine upload

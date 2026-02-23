@@ -1,0 +1,19 @@
+[package]
+name = "numrus"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "_numrus"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.19.2", features = ["extension-module"] }
+numrus-rs = { path = "../../numrus-rs" }
+numrus-core = { path = "../../numrus-core", features = ["avx512"] }
+numrus-blas = { path = "../../numrus-blas", features = ["avx512"] }
+
+[profile.release]
+lto = true
+strip = true
+panic = "abort"

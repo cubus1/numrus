@@ -1,0 +1,10 @@
+[package]
+name = "numrus-substrate"
+version = "0.1.0"
+edition = "2021"
+description = "Learning substrate: X-Trans sampling, receptivity-gated absorption, plasticity, organic flush"
+
+[dependencies]
+
+[dev-dependencies]
+rand = "0.8"

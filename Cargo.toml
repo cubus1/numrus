@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = [
+    "numrus-core",
+    "numrus-blas",
+    "numrus-mkl",
+    "numrus-clam",
+    "numrus-nars",
+    "numrus-substrate",
+    "numrus-rs",
+    "bindings/python",
+]

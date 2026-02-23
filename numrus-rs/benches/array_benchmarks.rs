@@ -1,0 +1,279 @@
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use nalgebra::{DMatrix, DVector};
+use ndarray::{Array1, Array2};
+use numrus_rs::num_array::linalg::matrix_multiply;
+use numrus_rs::NumArrayF32;
+
+// Define the operations you want to benchmark
+enum Operation {
+    AddVectors,
+    Mean,
+    Median,
+    DotProduct,
+    MatrixVectorMultiplication,
+    MatrixMatrixMultiplication,
+}
+
+// Helper functions to create data
+fn create_vector(size: usize) -> Vec<f32> {
+    (0..size).map(|x| x as f32).collect()
+}
+
+fn create_matrix(rows: usize, cols: usize) -> Vec<f32> {
+    (0..rows * cols).map(|x| x as f32).collect()
+}
+
+fn calculate_median(values: &mut [f32]) -> f32 {
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let len = values.len();
+    if len.is_multiple_of(2) {
+        (values[len / 2 - 1] + values[len / 2]) / 2.0
+    } else {
+        values[len / 2]
+    }
+}
+
+// Generic benchmark function for vector operations
+fn benchmark_vector_operation(c: &mut Criterion, op: Operation, sizes: &[usize]) {
+    let mut group = c.benchmark_group(match op {
+        Operation::AddVectors => "Vector Addition",
+        Operation::Mean => "Vector Mean",
+        Operation::Median => "Vector Median",
+        Operation::DotProduct => "Vector Dot Product",
+        _ => "Unknown Operation",
+    });
+
+    for &size in sizes {
+        // Setup data
+        let a_numrus = NumArrayF32::new(create_vector(size));
+        let b_numrus = if matches!(op, Operation::AddVectors | Operation::DotProduct) {
+            Some(NumArrayF32::new(create_vector(size)))
+        } else {
+            None
+        };
+
+        let mut a_ndarray = Array1::from_vec(create_vector(size));
+        let b_ndarray = if matches!(op, Operation::AddVectors | Operation::DotProduct) {
+            Some(Array1::from_vec(create_vector(size)))
+        } else {
+            None
+        };
+
+        let mut a_nalgebra = DVector::from_vec(create_vector(size));
+        let b_nalgebra = if matches!(op, Operation::AddVectors | Operation::DotProduct) {
+            Some(DVector::from_vec(create_vector(size)))
+        } else {
+            None
+        };
+
+        // Set throughput for better reporting
+        group.throughput(Throughput::Elements(size as u64));
+
+        match op {
+            Operation::AddVectors => {
+                group.bench_with_input(
+                    BenchmarkId::new("numrus_rs", size),
+                    &size,
+                    |bencher, &_| {
+                        bencher.iter(|| {
+                            black_box(&a_numrus) + black_box(b_numrus.as_ref().unwrap())
+                        })
+                    },
+                );
+
+                group.bench_with_input(BenchmarkId::new("ndarray", size), &size, |bencher, &_| {
+                    bencher.iter(|| black_box(&a_ndarray) + black_box(b_ndarray.as_ref().unwrap()))
+                });
+
+                group.bench_with_input(BenchmarkId::new("nalgebra", size), &size, |bencher, &_| {
+                    bencher
+                        .iter(|| black_box(&a_nalgebra) + black_box(b_nalgebra.as_ref().unwrap()))
+                });
+            }
+            Operation::Mean => {
+                group.bench_with_input(
+                    BenchmarkId::new("numrus_rs", size),
+                    &size,
+                    |bencher, &_| bencher.iter(|| black_box(a_numrus.mean())),
+                );
+
+                group.bench_with_input(BenchmarkId::new("ndarray", size), &size, |bencher, &_| {
+                    bencher.iter(|| black_box(a_ndarray.mean().unwrap()))
+                });
+
+                group.bench_with_input(BenchmarkId::new("nalgebra", size), &size, |bencher, &_| {
+                    bencher.iter(|| {
+                        black_box(a_nalgebra.iter().sum::<f32>() / a_nalgebra.len() as f32)
+                    })
+                });
+            }
+            Operation::Median => {
+                group.bench_with_input(
+                    BenchmarkId::new("numrus_rs", size),
+                    &size,
+                    |bencher, &_| bencher.iter(|| black_box(a_numrus.median())),
+                );
+
+                group.bench_with_input(BenchmarkId::new("ndarray", size), &size, |bencher, &_| {
+                    bencher.iter(|| {
+                        let slice = a_ndarray.as_slice_mut().expect("Failed to get slice");
+                        black_box(calculate_median(slice));
+                    })
+                });
+
+                group.bench_with_input(BenchmarkId::new("nalgebra", size), &size, |bencher, &_| {
+                    bencher.iter(|| {
+                        let slice = a_nalgebra.as_mut_slice();
+                        black_box(calculate_median(slice));
+                    })
+                });
+            }
+            Operation::DotProduct => {
+                group.bench_with_input(
+                    BenchmarkId::new("numrus_rs", size),
+                    &size,
+                    |bencher, &_| {
+                        bencher.iter(|| black_box(a_numrus.dot(b_numrus.as_ref().unwrap())))
+                    },
+                );
+
+                group.bench_with_input(BenchmarkId::new("ndarray", size), &size, |bencher, &_| {
+                    bencher.iter(|| black_box(a_ndarray.dot(b_ndarray.as_ref().unwrap())))
+                });
+
+                group.bench_with_input(BenchmarkId::new("nalgebra", size), &size, |bencher, &_| {
+                    bencher.iter(|| black_box(a_nalgebra.dot(b_nalgebra.as_ref().unwrap())))
+                });
+            }
+            _ => {}
+        }
+    }
+
+    group.finish();
+}
+
+// Generic benchmark function for matrix operations
+fn benchmark_matrix_operation(c: &mut Criterion, op: Operation, sizes: &[usize]) {
+    let mut group = c.benchmark_group(match op {
+        Operation::MatrixVectorMultiplication => "Matrix-Vector Multiplication",
+        Operation::MatrixMatrixMultiplication => "Matrix-Matrix Multiplication",
+        _ => "Unknown Operation",
+    });
+
+    for &size in sizes {
+        let rows = size;
+        let cols = size;
+
+        // Setup data
+        let matrix1 = create_matrix(rows, cols);
+        let matrix2 = if matches!(op, Operation::MatrixMatrixMultiplication) {
+            Some(create_matrix(cols, rows))
+        } else {
+            None
+        };
+        let vector = create_vector(cols);
+
+        let num_array_matrix1 = NumArrayF32::new_with_shape(matrix1.clone(), vec![rows, cols]);
+        let num_array_matrix2 = matrix2
+            .as_ref()
+            .map(|m2| NumArrayF32::new_with_shape(m2.clone(), vec![cols, rows]));
+        let num_array_vector = if matches!(op, Operation::MatrixVectorMultiplication) {
+            Some(NumArrayF32::new_with_shape(vector.clone(), vec![cols]))
+        } else {
+            None
+        };
+
+        let ndarray_matrix1 = Array2::from_shape_vec((rows, cols), matrix1.clone()).unwrap();
+        let ndarray_matrix2 = matrix2
+            .as_ref()
+            .map(|m2| Array2::from_shape_vec((cols, rows), m2.clone()).unwrap());
+        let ndarray_vector = if matches!(op, Operation::MatrixVectorMultiplication) {
+            Some(Array1::from_vec(vector.clone()))
+        } else {
+            None
+        };
+
+        let nalgebra_matrix1 = DMatrix::from_vec(rows, cols, matrix1.clone());
+        let nalgebra_matrix2 = matrix2
+            .as_ref()
+            .map(|m2| DMatrix::from_vec(cols, rows, m2.clone()));
+        let nalgebra_vector = if matches!(op, Operation::MatrixVectorMultiplication) {
+            Some(DVector::from_vec(vector.clone()))
+        } else {
+            None
+        };
+
+        // Set throughput
+        group.throughput(match op {
+            Operation::MatrixVectorMultiplication => Throughput::Elements(size as u64),
+            Operation::MatrixMatrixMultiplication => Throughput::Elements((size * size) as u64),
+            _ => Throughput::Elements(0),
+        });
+
+        match op {
+            Operation::MatrixVectorMultiplication => {
+                group.bench_with_input(
+                    BenchmarkId::new("numrus_rs", size),
+                    &size,
+                    |bencher, &_| {
+                        bencher.iter(|| {
+                            matrix_multiply(&num_array_matrix1, num_array_vector.as_ref().unwrap())
+                        })
+                    },
+                );
+
+                group.bench_with_input(BenchmarkId::new("ndarray", size), &size, |bencher, &_| {
+                    bencher.iter(|| ndarray_matrix1.dot(ndarray_vector.as_ref().unwrap()))
+                });
+
+                group.bench_with_input(BenchmarkId::new("nalgebra", size), &size, |bencher, &_| {
+                    bencher.iter(|| {
+                        nalgebra_matrix1.clone() * nalgebra_vector.as_ref().unwrap().clone()
+                    })
+                });
+            }
+            Operation::MatrixMatrixMultiplication => {
+                group.bench_with_input(
+                    BenchmarkId::new("numrus_rs", size),
+                    &size,
+                    |bencher, &_| {
+                        bencher.iter(|| {
+                            matrix_multiply(&num_array_matrix1, num_array_matrix2.as_ref().unwrap())
+                        })
+                    },
+                );
+
+                group.bench_with_input(BenchmarkId::new("ndarray", size), &size, |bencher, &_| {
+                    bencher.iter(|| ndarray_matrix1.dot(ndarray_matrix2.as_ref().unwrap()))
+                });
+
+                group.bench_with_input(BenchmarkId::new("nalgebra", size), &size, |bencher, &_| {
+                    bencher.iter(|| {
+                        nalgebra_matrix1.clone() * nalgebra_matrix2.as_ref().unwrap().clone()
+                    })
+                });
+            }
+            _ => {}
+        }
+    }
+
+    group.finish();
+}
+
+fn main_benchmark(c: &mut Criterion) {
+    let vector_sizes = [1_000, 10_000, 100_000];
+    let matrix_sizes = [100, 500, 1_000];
+
+    // Vector operations
+    benchmark_vector_operation(c, Operation::AddVectors, &vector_sizes);
+    benchmark_vector_operation(c, Operation::Mean, &vector_sizes);
+    benchmark_vector_operation(c, Operation::Median, &vector_sizes);
+    benchmark_vector_operation(c, Operation::DotProduct, &vector_sizes);
+
+    // Matrix operations
+    benchmark_matrix_operation(c, Operation::MatrixVectorMultiplication, &matrix_sizes);
+    benchmark_matrix_operation(c, Operation::MatrixMatrixMultiplication, &matrix_sizes);
+}
+
+criterion_group!(benches, main_benchmark);
+criterion_main!(benches);
