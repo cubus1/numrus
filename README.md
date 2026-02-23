@@ -42,6 +42,8 @@ The substrate for [cubus](https://github.com/cubus1/cubus).
 
 ## Benchmarks vs NumPy
 
+![NumPy vs numrus benchmark comparison](docs/benchmark-numpy-comparison.png)
+
 Measured on Railway (Amsterdam, Sapphire Rapids, AVX-512). NumPy 2.4.2 with OpenBLAS.
 
 ### Bitwise / HDC Operations
