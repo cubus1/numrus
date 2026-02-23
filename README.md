@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/banner.png" alt="numrus banner" width="600">
+</p>
+
 # numrus
 
 SIMD-accelerated numeric computing for Rust. AVX-512, AVX2, scalar fallback.
