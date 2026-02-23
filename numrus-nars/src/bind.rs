@@ -43,7 +43,7 @@ pub const BIND_DEPTHS: &[usize] = &[1, 2, 3, 4];
 // Base type
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Base {
     Binary,       // 1 bit per dimension, {0, 1}
     Unsigned(u8), // B values per dimension, {0, 1, ..., B-1}
